@@ -12,6 +12,7 @@ import { GranolaApiError } from 'src/logic-functions/types/granola-api-error';
 import { type GranolaBackfillBatchPayload } from 'src/logic-functions/types/granola-backfill-batch-payload.type';
 import { type GranolaBackfillWorkerPayload } from 'src/logic-functions/types/granola-backfill-worker-payload.type';
 import { GranolaInvalidResponseError } from 'src/logic-functions/types/granola-invalid-response-error';
+import { assertGranolaFolderSelectionReadyOrThrow } from 'src/logic-functions/utils/assert-granola-folder-selection-ready-or-throw.util';
 import { buildRetryableGranolaError } from 'src/logic-functions/utils/build-retryable-granola-error.util';
 import { createGranolaClientOrThrow } from 'src/logic-functions/utils/create-granola-client-or-throw.util';
 import { enqueueGranolaJobOrThrow } from 'src/logic-functions/utils/enqueue-granola-job-or-throw.util';
@@ -27,6 +28,7 @@ export const granolaBackfillWorkerHandler = async (
   payload: GranolaBackfillWorkerPayload,
 ) => {
   try {
+    await assertGranolaFolderSelectionReadyOrThrow();
     const registration = await findGranolaRegistrationForCurrentKey();
 
     if (

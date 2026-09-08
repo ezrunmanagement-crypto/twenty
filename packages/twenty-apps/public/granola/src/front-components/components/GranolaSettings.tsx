@@ -16,6 +16,7 @@ import {
 } from 'twenty-ui/theme-constants';
 
 import { GranolaConnectionSection } from 'src/front-components/components/GranolaConnectionSection';
+import { GranolaFolderSection } from 'src/front-components/components/GranolaFolderSection';
 import { GranolaImportHistorySection } from 'src/front-components/components/GranolaImportHistorySection';
 import { GranolaLiveSyncSection } from 'src/front-components/components/GranolaLiveSyncSection';
 import { OnMountEffect } from 'src/front-components/components/OnMountEffect';
@@ -203,7 +204,10 @@ export const GranolaSettings = () => {
                   onRegister={registerLiveSync}
                 />
                 {getGranolaLiveSyncState(state.status) === 'active' && (
-                  <GranolaImportHistorySection />
+                  <>
+                    <GranolaFolderSection />
+                    <GranolaImportHistorySection />
+                  </>
                 )}
               </>
             )}
