@@ -6,6 +6,8 @@ import { LightButton } from 'twenty-ui/input';
 import { Section } from 'twenty-ui/layout';
 import { H2Title } from 'twenty-ui/typography';
 
+import { GRANOLA_INITIAL_IMPORT_DAYS } from 'src/constants/granola-history.constant';
+
 import { SettingsOptionCardContent } from 'src/front-components/components/SettingsOptionCardContent';
 import { StyledSettingsCard } from 'src/front-components/components/StyledSettingsCard';
 import { StyledSettingsError } from 'src/front-components/components/StyledSettingsError';
@@ -33,7 +35,8 @@ export const GranolaLiveSyncSection = ({
   const description = {
     registering: t('Registering the Granola webhook…'),
     active: t(
-      'New and updated notes appear in Call Recordings within minutes.',
+      'New and updated notes appear in Call Recordings within minutes. The last {days} days were imported when you connected.',
+      { days: GRANOLA_INITIAL_IMPORT_DAYS },
     ),
     paused: t(
       'The webhook is paused in Granola. Resume it to receive new notes again.',

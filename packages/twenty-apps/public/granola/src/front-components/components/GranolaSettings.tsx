@@ -16,12 +16,15 @@ import {
 } from 'twenty-ui/theme-constants';
 
 import { GranolaConnectionSection } from 'src/front-components/components/GranolaConnectionSection';
+import { GranolaImportHistorySection } from 'src/front-components/components/GranolaImportHistorySection';
 import { GranolaLiveSyncSection } from 'src/front-components/components/GranolaLiveSyncSection';
 import { OnMountEffect } from 'src/front-components/components/OnMountEffect';
+import { GRANOLA_WEBHOOK_REGISTRATION_ROUTE_PATH } from 'src/constants/granola-webhook-registration-route-path';
+import { GRANOLA_WEBHOOK_REMOVAL_ROUTE_PATH } from 'src/constants/granola-webhook-removal-route-path';
 import { type GranolaConnectionStatus } from 'src/front-components/types/granola-connection-status.type';
 import { fetchGranolaConnectionStatusOrThrow } from 'src/front-components/utils/fetch-granola-connection-status-or-throw.util';
-import { registerGranolaWebhookOrThrow } from 'src/front-components/utils/register-granola-webhook-or-throw.util';
-import { removeGranolaWebhookOrThrow } from 'src/front-components/utils/remove-granola-webhook-or-throw.util';
+import { getGranolaLiveSyncState } from 'src/front-components/utils/get-granola-live-sync-state.util';
+import { postGranolaSettingsRouteOrThrow } from 'src/front-components/utils/post-granola-settings-route-or-throw.util';
 import { setGranolaApiKeyOrThrow } from 'src/front-components/utils/set-granola-api-key-or-throw.util';
 
 const StyledContainer = styled.div`
@@ -82,7 +85,10 @@ export const GranolaSettings = () => {
     setRegistrationError(undefined);
 
     try {
-      await registerGranolaWebhookOrThrow();
+      await postGranolaSettingsRouteOrThrow({
+        routePath: GRANOLA_WEBHOOK_REGISTRATION_ROUTE_PATH,
+        body: {},
+      });
     } catch (error) {
       setRegistrationError(
         error instanceof Error
@@ -129,7 +135,10 @@ export const GranolaSettings = () => {
     setRemoveError(undefined);
 
     try {
-      await removeGranolaWebhookOrThrow();
+      await postGranolaSettingsRouteOrThrow({
+        routePath: GRANOLA_WEBHOOK_REMOVAL_ROUTE_PATH,
+        body: {},
+      });
       await setGranolaApiKeyOrThrow({ frontComponentId, apiKey: '' });
     } catch (error) {
       setRemoveError(
@@ -186,12 +195,17 @@ export const GranolaSettings = () => {
               </StyledNotice>
             )}
             {state.status.isConnected && state.status.canManage && (
-              <GranolaLiveSyncSection
-                status={state.status}
-                isRegistering={isRegistering}
-                registrationError={registrationError}
-                onRegister={registerLiveSync}
-              />
+              <>
+                <GranolaLiveSyncSection
+                  status={state.status}
+                  isRegistering={isRegistering}
+                  registrationError={registrationError}
+                  onRegister={registerLiveSync}
+                />
+                {getGranolaLiveSyncState(state.status) === 'active' && (
+                  <GranolaImportHistorySection />
+                )}
+              </>
             )}
           </>
         )}
