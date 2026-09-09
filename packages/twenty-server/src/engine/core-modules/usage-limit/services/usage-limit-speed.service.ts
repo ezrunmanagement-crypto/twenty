@@ -15,6 +15,7 @@ import {
 } from 'src/engine/core-modules/usage-limit/exceptions/usage-limit.exception';
 import { UsageLimitEntitlementService } from 'src/engine/core-modules/usage-limit/services/usage-limit-entitlement.service';
 import { type FlatUsageLimit } from 'src/engine/core-modules/usage-limit/types/flat-usage-limit.type';
+import { type SpeedBucketAdmission } from 'src/engine/core-modules/usage-limit/types/speed-bucket-admission.type';
 import { type SpeedBucketOutcome } from 'src/engine/core-modules/usage-limit/types/speed-bucket-outcome.type';
 import { type SpeedBucketRequest } from 'src/engine/core-modules/usage-limit/types/speed-bucket-request.type';
 import { type UsageLimits } from 'src/engine/core-modules/usage-limit/types/usage-limits.type';
@@ -50,7 +51,7 @@ export class UsageLimitSpeedService {
     operationType: UsageOperationType;
     cost?: number;
   }): Promise<void> {
-    const outcome = await this.consumeAdmittingOnFailure({
+    const outcome = await this.tryConsume({
       resourceType,
       authContext,
       operationType,
@@ -84,17 +85,75 @@ export class UsageLimitSpeedService {
     );
   }
 
+  async tryConsume({
+    resourceType,
+    authContext,
+    operationType,
+    cost = 1,
+  }: {
+    resourceType: UsageResourceType;
+    authContext: WorkspaceAuthContext;
+    operationType: UsageOperationType;
+    cost?: number;
+  }): Promise<SpeedBucketOutcome> {
+    const admission = await this.consumeAdmittingOnFailure({
+      resourceType,
+      authContext,
+      operationType,
+      cost,
+      allowPartial: false,
+    });
+
+    if (admission.admittedCount === cost || !isDefined(admission.exhausted)) {
+      return ADMITTED;
+    }
+
+    return {
+      admitted: false,
+      exhausted: admission.exhausted,
+      retryAfterMs: admission.retryAfterMs,
+    };
+  }
+
+  async tryConsumeUpTo({
+    resourceType,
+    authContext,
+    operationType,
+    maxCost,
+  }: {
+    resourceType: UsageResourceType;
+    authContext: WorkspaceAuthContext;
+    operationType: UsageOperationType;
+    maxCost: number;
+  }): Promise<SpeedBucketAdmission> {
+    return await this.consumeAdmittingOnFailure({
+      resourceType,
+      authContext,
+      operationType,
+      cost: maxCost,
+      allowPartial: true,
+    });
+  }
+
   private async consumeAdmittingOnFailure({
     resourceType,
     authContext,
     operationType,
     cost,
+    allowPartial,
   }: {
     resourceType: UsageResourceType;
     authContext: WorkspaceAuthContext;
     operationType: UsageOperationType;
     cost: number;
-  }): Promise<SpeedBucketOutcome> {
+    allowPartial: boolean;
+  }): Promise<SpeedBucketAdmission> {
+    const fullAdmission: SpeedBucketAdmission = {
+      admittedCount: cost,
+      exhausted: null,
+      retryAfterMs: 0,
+    };
+
     const buckets = await this.buildBuckets({
       resourceType,
       authContext,
@@ -102,11 +161,11 @@ export class UsageLimitSpeedService {
     });
 
     if (buckets.length === 0) {
-      return ADMITTED;
+      return fullAdmission;
     }
 
     try {
-      return await this.consumeTokens({ buckets, cost });
+      return await this.consumeTokens({ buckets, cost, allowPartial });
     } catch (error) {
       if (!(error instanceof CacheStorageException)) {
         throw error;
@@ -114,45 +173,51 @@ export class UsageLimitSpeedService {
 
       this.logger.error(`Usage limit enforcement degraded: ${error.message}`);
 
-      return ADMITTED;
+      return fullAdmission;
     }
   }
 
   private async consumeTokens({
     buckets,
     cost,
+    allowPartial,
   }: {
     buckets: SpeedBucketRequest[];
     cost: number;
-  }): Promise<SpeedBucketOutcome> {
+    allowPartial: boolean;
+  }): Promise<SpeedBucketAdmission> {
     const bucketConfigs = buckets.map((bucket) => ({
       burst: bucket.burst,
       refill: bucket.refillPerWindow,
       windowMs: bucket.windowMs,
     }));
 
-    const [admitted, failedIndex, retryAfterMs] =
+    const [admittedCount, exhaustedIndex, retryAfterMs] =
       await this.cacheStorage.runScript<number[]>({
         script: TRY_CONSUME_TOKEN_BUCKETS_SCRIPT,
         keys: buckets.map((bucket) => bucket.key),
-        args: [String(cost), JSON.stringify(bucketConfigs)],
+        args: [
+          String(cost),
+          JSON.stringify(bucketConfigs),
+          allowPartial ? '1' : '0',
+        ],
       });
 
-    if (admitted === 1) {
-      return ADMITTED;
+    if (admittedCount === cost) {
+      return { admittedCount, exhausted: null, retryAfterMs: 0 };
     }
 
-    const exhausted = buckets[failedIndex - 1];
+    const exhausted = buckets[exhaustedIndex - 1];
 
     if (!isDefined(exhausted)) {
       this.logger.warn(
-        `try-consume-token-buckets returned an out-of-range index ${failedIndex}`,
+        `try-consume-token-buckets returned an out-of-range index ${exhaustedIndex}`,
       );
 
-      return ADMITTED;
+      return { admittedCount: cost, exhausted: null, retryAfterMs: 0 };
     }
 
-    return { admitted: false, exhausted, retryAfterMs };
+    return { admittedCount, exhausted, retryAfterMs };
   }
 
   private async buildBuckets({
